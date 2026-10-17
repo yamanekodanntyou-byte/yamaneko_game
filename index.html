@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#05070d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SWORD BATTLE">
+    
+    <!-- PWA App Icon and Manifest Base64 -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%2305070d;'><rect width='512' height='512' rx='100' fill='%230b1120'/><text x='50%25' y='55%25' dominant-baseline='central' text-anchor='middle' font-size='320'>⚔️</text></svg>">
+    <link rel="manifest" href="data:application/manifest+json;utf8,{%22name%22:%22SWORD%20FINDER%20BATTLE%22,%22short_name%22:%22SWORD%20BATTLE%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22%2305070d%22,%22theme_color%22:%22%2305070d%22,%22icons%22:[{%22src%22:%22data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%2305070d;'><rect width='512' height='512' rx='100' fill='%230b1120'/><text x='50%25' y='55%25' dominant-baseline='central' text-anchor='middle' font-size='320'>⚔️</text></svg>%22,%22sizes%22:%22512x512%22,%22type%22:%22image/svg+xml%22}]}">
+    
+    <title>SWORD FINDER BATTLE</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: #05070d;
+            color: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding-bottom: 40px;
+        }
+
+        /* Header UI */
+        header {
+            background-color: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .title-group h1 {
+            font-size: 16px;
+            font-weight: 900;
+            color: #fbbf24;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .title-group p {
+            font-size: 10px;
+            color: #94a3b8;
+        }
+
+        .btn-icon {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn-icon-yellow {
+            background-color: rgba(251, 191, 36, 0.15);
+            border-color: rgba(251, 191, 36, 0.4);
+            color: #fbbf24;
+        }
+
+        /* Controls Area */
+        .panel {
+            background-color: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        select {
+            background-color: #1e293b;
+            color: #f8fafc;
+            border: 1px solid #334155;
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            width: 100%;
+            outline: none;
+        }
+
+        /* HP Drain Bar */
+        .hp-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background-color: #020617;
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px solid #1e293b;
+        }
+
+        .hp-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .hp-p1 { color: #38bdf8; }
+        .hp-p2 { color: #f43f5e; }
+
+        .hp-bar-track {
+            height: 16px;
+            background-color: #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            border: 1px solid #334155;
+        }
+
+        .hp-bar-p1 {
+            height: 100%;
+            background: linear-gradient(90deg, #0284c7, #38bdf8);
+            transition: width 0.3s ease;
+        }
+
+        .hp-bar-p2 {
+            height: 100%;
+            background: linear-gradient(90deg, #f43f5e, #e11d48);
+            transition: width 0.3s ease;
+        }
+
+        /* Game Board Area */
+        .board-card {
+            background-color: #0f172a;
+            border: 2px solid #1e293b;
+            border-radius: 16px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .board-card.p1-card { border-color: rgba(56, 189, 248, 0.4); }
+        .board-card.p2-card { border-color: rgba(244, 63, 94, 0.3); opacity: 0.95; }
+
+        .board-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .player-badge {
+            font-size: 12px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .combo-badge {
+            background-color: #f59e0b;
+            color: #000;
+            font-size: 10px;
+            font-weight: 900;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        /* Grid */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 4px;
+            width: 100%;
+            background-color: #020617;
+            padding: 6px;
+            border-radius: 12px;
+            border: 1px solid #1e293b;
+            touch-action: manipulation;
+        }
+
+        .cell {
+            aspect-ratio: 1 / 1;
+            background-color: #1e293b;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #334155;
+            transition: transform 0.05s ease, background-color 0.1s ease;
+        }
+
+        .cell:active {
+            transform: scale(0.90);
+        }
+
+        .cell.revealed {
+            background-color: #090d16;
+            border-color: #0f172a;
+            cursor: default;
+        }
+
+        .cell.sword {
+            background-color: #854d0e;
+            border-color: #eab308;
+            box-shadow: 0 0 8px rgba(234, 179, 8, 0.5);
+        }
+
+        /* Modals */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .modal.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background-color: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 20px;
+            padding: 20px;
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .modal-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #fbbf24;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-full {
+            width: 100%;
+            padding: 12px;
+            background-color: #38bdf8;
+            color: #020617;
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="title-group">
+                <h1>⚔️ SWORD BATTLE</h1>
+                <p>すべての剣を掘り当ててシートを更新せよ！</p>
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <button class="btn-icon btn-icon-yellow" onclick="openInstallModal()">📱 アプリ化</button>
+            </div>
+        </header>
+
+        <!-- Controls Panel -->
+        <div class="panel">
+            <div style="display: flex; gap: 8px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 10px; color: #94a3b8; display: block; margin-bottom: 4px;">対戦モード</label>
+                    <select id="modeSelect" onchange="changeMode()">
+                        <option value="cpu">🤖 VS AI CPU対戦</option>
+                        <option value="solo">🎯 1人プレイ (練習)</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 10px; color: #94a3b8; display: block; margin-bottom: 4px;">難易度</label>
+                    <select id="diffSelect" onchange="initGame()">
+                        <option value="standard">スタンダード (10×10 / 12剣)</option>
+                        <option value="easy">イージー (8×8 / 8剣)</option>
+                        <option value="hard">ハード (12×12 / 18剣)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- HP Drain Gauge -->
+            <div class="hp-section">
+                <div class="hp-label">
+                    <span class="hp-p1">PLAYER 1: <span id="hpP1Text">50%</span></span>
+                    <span style="color: #64748b;">⚔️ HP DRAIN ⚔️</span>
+                    <span class="hp-p2">OPPONENT: <span id="hpP2Text">50%</span></span>
+                </div>
+                <div class="hp-bar-track">
+                    <div id="hpP1Bar" class="hp-bar-p1" style="width: 50%;"></div>
+                    <div id="hpP2Bar" class="hp-bar-p2" style="width: 50%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PLAYER 1 Board -->
+        <div class="board-card p1-card">
+            <div class="board-header">
+                <div class="player-badge hp-p1">
+                    <span>👤 PLAYER 1</span>
+                    <span style="font-size: 10px; color: #64748b;" id="p1Sheet">SHEET 1</span>
+                </div>
+                <div class="combo-badge" id="p1Combo">0 COMBO</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8;">
+                <span>残り剣: <strong style="color: #fbbf24;" id="p1Left">12</strong></span>
+                <span>すべての剣を発掘して新シートへ！</span>
+            </div>
+            <!-- Grid 1 -->
+            <div class="grid-container" id="gridP1"></div>
+        </div>
+
+        <!-- OPPONENT Board -->
+        <div class="board-card p2-card" id="p2Card">
+            <div class="board-header">
+                <div class="player-badge hp-p2">
+                    <span id="p2Name">🤖 AI CPU</span>
+                    <span style="font-size: 10px; color: #64748b;" id="p2Sheet">SHEET 1</span>
+                </div>
+                <div class="combo-badge" id="p2Combo">0 COMBO</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8;">
+                <span>残り剣: <strong style="color: #fbbf24;" id="p2Left">12</strong></span>
+                <span id="p2Status">探索中...</span>
+            </div>
+            <!-- Grid 2 -->
+            <div class="grid-container" id="gridP2"></div>
+        </div>
+    </div>
+
+    <!-- Install Modal -->
+    <div id="installModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span>📱 ホーム画面への追加方法</span>
+                <span style="cursor: pointer;" onclick="closeInstallModal()">✕</span>
+            </div>
+            <div style="font-size: 11px; color: #cbd5e1; display: flex; flex-direction: column; gap: 8px; line-height: 1.5;">
+                <div style="background-color: #020617; padding: 10px; border-radius: 8px; border: 1px solid #334155;">
+                    <p style="color: #38bdf8; font-weight: bold; margin-bottom: 2px;">iPhone (Safari) の場合:</p>
+                    <p>1. 画面下の <strong>「共有ボタン (□↑)」</strong> をタップ</p>
+                    <p>2. <strong>「ホーム画面に追加」</strong> を選択</p>
+                </div>
+                <div style="background-color: #020617; padding: 10px; border-radius: 8px; border: 1px solid #334155;">
+                    <p style="color: #f43f5e; font-weight: bold; margin-bottom: 2px;">Android (Chrome) の場合:</p>
+                    <p>1. 右上の <strong>「メニュー (⋮)」</strong> をタップ</p>
+                    <p>2. <strong>「アプリをインストール」</strong> または <strong>「ホーム画面に追加」</strong> を選択</p>
+                </div>
+            </div>
+            <button class="btn-full" onclick="closeInstallModal()">閉じる</button>
+        </div>
+    </div>
+
+    <!-- Winner Modal -->
+    <div id="winnerModal" class="modal">
+        <div class="modal-content" style="text-align: center;">
+            <div style="font-size: 48px;" id="winEmoji">🏆</div>
+            <h2 style="font-size: 20px; font-weight: 900; color: #fbbf24;" id="winTitle">VICTORY!</h2>
+            <p style="font-size: 12px; color: #cbd5e1;" id="winDesc">相手のHPを削りきりました！</p>
+            <button class="btn-full" onclick="initGame(); closeWinnerModal();">もう一度対戦する</button>
+        </div>
+    </div>
+
+    <script>
+        let size = 10;
+        let swordsCount = 12;
+        let p1Hp = 50;
+        let p1Combo = 0;
+        let p2Combo = 0;
+        let p1SheetNum = 1;
+        let p2SheetNum = 1;
+        let gameActive = true;
+        let mode = 'cpu';
+
+        let p1Grid = [], p2Grid = [];
+        let p1Revealed = [], p2Revealed = [];
+        let p1SwordsLeft = 0, p2SwordsLeft = 0;
+        let cpuInterval = null;
+
+        function initGame() {
+            const diff = document.getElementById('diffSelect').value;
+            if (diff === 'easy') { size = 8; swordsCount = 8; }
+            else if (diff === 'standard') { size = 10; swordsCount = 12; }
+            else { size = 12; swordsCount = 18; }
+
+            p1Hp = 50;
+            p1Combo = 0;
+            p2Combo = 0;
+            p1SheetNum = 1;
+            p2SheetNum = 1;
+            gameActive = true;
+            updateHpUI();
+
+            document.getElementById('p1Combo').innerText = '0 COMBO';
+            document.getElementById('p2Combo').innerText = '0 COMBO';
+            document.getElementById('p1Sheet').innerText = 'SHEET 1';
+            document.getElementById('p2Sheet').innerText = 'SHEET 1';
+
+            resetP1Sheet();
+            resetP2Sheet();
+
+            if (cpuInterval) clearInterval(cpuInterval);
+            if (mode === 'cpu') {
+                cpuInterval = setInterval(cpuTurn, 1500);
+            }
+        }
+
+        function resetP1Sheet() {
+            p1Grid = createBoard();
+            p1Revealed = Array(size * size).fill(false);
+            p1SwordsLeft = swordsCount;
+            document.getElementById('p1Left').innerText = swordsCount;
+            document.getElementById('p1Sheet').innerText = `SHEET ${p1SheetNum}`;
+            renderBoard('gridP1', p1Grid, p1Revealed, true);
+        }
+
+        function resetP2Sheet() {
+            p2Grid = createBoard();
+            p2Revealed = Array(size * size).fill(false);
+            p2SwordsLeft = swordsCount;
+            document.getElementById('p2Left').innerText = swordsCount;
+            document.getElementById('p2Sheet').innerText = `SHEET ${p2SheetNum}`;
+            renderBoard('gridP2', p2Grid, p2Revealed, false);
+        }
+
+        function createBoard() {
+            const grid = Array(size * size).fill(0);
+            let placed = 0;
+            while (placed < swordsCount) {
+                const idx = Math.floor(Math.random() * (size * size));
+                if (grid[idx] !== 'S') {
+                    grid[idx] = 'S';
+                    placed++;
+                }
+            }
+
+            for (let i = 0; i < size * size; i++) {
+                if (grid[i] === 'S') continue;
+                let count = 0;
+                const r = Math.floor(i / size);
+                const c = i % size;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < size && nc >= 0 && nc < size) {
+                            if (grid[nr * size + nc] === 'S') count++;
+                        }
+                    }
+                }
+                grid[i] = count;
+            }
+            return grid;
+        }
+
+        // マインスイーパーの「0」マス自動連鎖オープン処理 (Flood Fill algorithm)
+        function revealCellCascade(grid, revealed, index) {
+            const queue = [index];
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                if (curr < 0 || curr >= size * size) continue;
+
+                const r = Math.floor(curr / size);
+                const c = curr % size;
+
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < size && nc >= 0 && nc < size) {
+                            const nIdx = nr * size + nc;
+                            if (!revealed[nIdx] && grid[nIdx] !== 'S') {
+                                revealed[nIdx] = true;
+                                if (grid[nIdx] === 0) {
+                                    queue.push(nIdx);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function handlePlayerTap(idx) {
+            if (!gameActive || p1Revealed[idx]) return;
+
+            p1Revealed[idx] = true;
+            if (p1Grid[idx] === 'S') {
+                p1SwordsLeft--;
+                p1Combo++;
+                const dmg = 4 + p1Combo * 2;
+                p1Hp = Math.min(100, p1Hp + dmg);
+                document.getElementById('p1Combo').innerText = `${p1Combo} COMBO!`;
+                document.getElementById('p1Left').innerText = p1SwordsLeft;
+            } else {
+                p1Combo = 0;
+                document.getElementById('p1Combo').innerText = '0 COMBO';
+                // 0だったら周囲を連鎖オープン
+                if (p1Grid[idx] === 0) {
+                    revealCellCascade(p1Grid, p1Revealed, idx);
+                }
+            }
+
+            updateHpUI();
+            renderBoard('gridP1', p1Grid, p1Revealed, true);
+            checkWinner();
+
+            // すべての剣を発掘完了 -> 次のシートへ！
+            if (p1SwordsLeft <= 0 && gameActive) {
+                setTimeout(() => {
+                    p1SheetNum++;
+                    resetP1Sheet();
+                }, 400);
+            }
+        }
+
+        function cpuTurn() {
+            if (!gameActive || mode !== 'cpu') return;
+
+            const unrevealed = [];
+            for (let i = 0; i < size * size; i++) {
+                if (!p2Revealed[i]) unrevealed.push(i);
+            }
+
+            if (unrevealed.length === 0) return;
+
+            const targetIdx = unrevealed[Math.floor(Math.random() * unrevealed.length)];
+            p2Revealed[targetIdx] = true;
+
+            if (p2Grid[targetIdx] === 'S') {
+                p2SwordsLeft--;
+                p2Combo++;
+                const dmg = 4 + p2Combo * 2;
+                p1Hp = Math.max(0, p1Hp - dmg);
+                document.getElementById('p2Combo').innerText = `${p2Combo} COMBO!`;
+                document.getElementById('p2Left').innerText = p2SwordsLeft;
+            } else {
+                p2Combo = 0;
+                document.getElementById('p2Combo').innerText = '0 COMBO';
+                if (p2Grid[targetIdx] === 0) {
+                    revealCellCascade(p2Grid, p2Revealed, targetIdx);
+                }
+            }
+
+            updateHpUI();
+            renderBoard('gridP2', p2Grid, p2Revealed, false);
+            checkWinner();
+
+            // CPUがすべての剣を発掘完了 -> 次のシートへ！
+            if (p2SwordsLeft <= 0 && gameActive) {
+                setTimeout(() => {
+                    p2SheetNum++;
+                    resetP2Sheet();
+                }, 400);
+            }
+        }
+
+        function renderBoard(elementId, grid, revealed, isPlayer1) {
+            const container = document.getElementById(elementId);
+            container.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+            container.innerHTML = '';
+
+            for (let i = 0; i < size * size; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+
+                if (revealed[i]) {
+                    cell.classList.add('revealed');
+                    if (grid[i] === 'S') {
+                        cell.classList.add('sword');
+                        cell.innerText = '⚔️';
+                    } else if (grid[i] > 0) {
+                        cell.innerText = grid[i];
+                        cell.style.color = getNumColor(grid[i]);
+                    }
+                }
+
+                if (isPlayer1) {
+                    // タップ操作・クリック操作の最適化
+                    let handled = false;
+
+                    const triggerHandler = (e) => {
+                        if (e.type === 'touchstart') {
+                            handled = true;
+                        } else if (e.type === 'click' && handled) {
+                            handled = false;
+                            return;
+                        }
+                        handlePlayerTap(i);
+                    };
+
+                    cell.addEventListener('touchstart', triggerHandler, { passive: true });
+                    cell.addEventListener('click', triggerHandler);
+                }
+
+                container.appendChild(cell);
+            }
+        }
+
+        function getNumColor(num) {
+            const colors = ['', '#38bdf8', '#4ade80', '#f87171', '#c084fc', '#fbbf24', '#22d3ee'];
+            return colors[num] || '#ffffff';
+        }
+
+        function updateHpUI() {
+            document.getElementById('hpP1Text').innerText = `${p1Hp}%`;
+            document.getElementById('hpP2Text').innerText = `${100 - p1Hp}%`;
+            document.getElementById('hpP1Bar').style.width = `${p1Hp}%`;
+            document.getElementById('hpP2Bar').style.width = `${100 - p1Hp}%`;
+        }
+
+        function checkWinner() {
+            if (p1Hp >= 100) {
+                endGame('🏆 VICTORY!', '相手のHPを削りきりました！');
+            } else if (p1Hp <= 0) {
+                endGame('💀 DEFEAT', 'HPをすべて奪われました...');
+            }
+        }
+
+        function endGame(title, desc) {
+            gameActive = false;
+            if (cpuInterval) clearInterval(cpuInterval);
+            document.getElementById('winTitle').innerText = title;
+            document.getElementById('winDesc').innerText = desc;
+            document.getElementById('winnerModal').classList.add('active');
+        }
+
+        function changeMode() {
+            mode = document.getElementById('modeSelect').value;
+            const p2Card = document.getElementById('p2Card');
+            if (mode === 'solo') {
+                p2Card.style.display = 'none';
+            } else {
+                p2Card.style.display = 'flex';
+            }
+            initGame();
+        }
+
+        function openInstallModal() { document.getElementById('installModal').classList.add('active'); }
+        function closeInstallModal() { document.getElementById('installModal').classList.remove('active'); }
+        function closeWinnerModal() { document.getElementById('winnerModal').classList.remove('active'); }
+
+        window.onload = initGame;
+    </script>
+</body>
+</html>
