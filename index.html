@@ -320,10 +320,14 @@
         }
 
         @media (min-width: 640px) {
-            .battle-arena {
+            .battle-arena.dual-mode {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 16px;
+            }
+            .battle-arena {
+                display: flex;
+                justify-content: center;
             }
         }
 
@@ -338,6 +342,7 @@
             box-shadow: 0 8px 0 #15022e, 0 10px 20px rgba(0, 0, 0, 0.5);
             position: relative;
             overflow: hidden;
+            width: 100%;
         }
 
         .board-card.p1-card { border-color: #38bdf8; }
@@ -715,23 +720,26 @@
         window.onSnapshot = onSnapshot;
         window.getDoc = getDoc;
 
-        // Auth initialization promise
         window.authReadyPromise = (async () => {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
+                    try {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } catch (customTokenErr) {
+                        console.warn("Custom token auth failed:", customTokenErr);
+                        await signInAnonymously(auth);
+                    }
                 } else {
                     await signInAnonymously(auth);
                 }
                 return auth.currentUser;
             } catch (err) {
                 console.error("Auth error:", err);
-                // Fallback attempt
                 try {
                     const res = await signInAnonymously(auth);
                     return res.user;
                 } catch (e) {
-                    console.error("Fallback auth failed", e);
+                    return null;
                 }
             }
         })();
@@ -752,6 +760,7 @@
                 <button class="btn-menu btn-pvp" onclick="openOnlineModal()">🌐 オンライン対戦</button>
                 <button class="btn-menu btn-pvp" style="background: linear-gradient(180deg, #ec4899 0%, #be185d 100%);" onclick="openPvpModal()">⚔️ 1台でローカル対戦</button>
                 <button class="btn-menu btn-start" onclick="openFreeGameModal()">🎮 フリーゲーム (VS CPU)</button>
+                <button class="btn-menu btn-option" style="background: linear-gradient(180deg, #10b981 0%, #059669 100%); border-color: #a7f3d0; box-shadow: 0 8px 0px #047857;" onclick="startPracticeMode()">🎯 練習モード (1人プレイ)</button>
                 <button class="btn-menu btn-option" onclick="openOptionsModal()">⚙️ オプション</button>
             </div>
         </div>
@@ -766,7 +775,7 @@
             </header>
 
             <!-- Pop VS Gauge -->
-            <div class="vs-gauge-card">
+            <div class="vs-gauge-card" id="vsGaugeCard">
                 <div class="vs-info-row">
                     <span class="p1-color-text" id="vsP1Label">PLAYER 1: <span id="hpP1Text">50%</span></span>
                     <span style="color: #facc15; font-size: 12px; font-weight: 900;" id="turnIndicator">⚔️ VS DRAIN ⚔️</span>
@@ -779,7 +788,7 @@
             </div>
 
             <!-- Arcade Dual Arena -->
-            <div class="battle-arena">
+            <div class="battle-arena dual-mode" id="battleArenaContainer">
                 <!-- PLAYER 1 Board -->
                 <div class="board-card p1-card" id="p1Card">
                     <div id="p1Cutin" class="cutin-banner">P1 ATTACK!</div>
@@ -833,7 +842,7 @@
             <div style="display: flex; flex-direction: column; gap: 12px; margin: 12px 0;">
                 <div>
                     <label style="font-size: 12px; color: #f3e8ff; display: block; margin-bottom: 4px; font-weight: 900;">対戦モード</label>
-                    <select id="modeSelect" onchange="changeMode()">
+                    <select id="modeSelect">
                         <option value="cpu">🤖 VS AI CPU対戦</option>
                         <option value="pvp">⚔️ 2人対戦 (PVP)</option>
                         <option value="solo">🎯 1人プレイ (練習)</option>
@@ -878,6 +887,16 @@
             </div>
 
             <button class="btn-full" style="background: #2e1065; box-shadow: 0 6px 0 #15022e;" onclick="closeOnlineModal()">キャンセル</button>
+        </div>
+    </div>
+
+    <!-- Alert Modal -->
+    <div id="alertModal" class="modal">
+        <div class="modal-content" style="text-align: center;">
+            <div style="font-size: 40px; margin-bottom: 8px;">⚠️</div>
+            <h2 style="font-size: 16px; font-weight: 900; color: #facc15;" id="alertModalTitle">お知らせ</h2>
+            <p style="font-size: 13px; color: #ffffff; font-weight: 800; margin: 12px 0;" id="alertModalText"></p>
+            <button class="btn-full" style="background: #2e1065; box-shadow: 0 6px 0 #15022e;" onclick="closeAlertModal()">OK</button>
         </div>
     </div>
 
@@ -999,7 +1018,7 @@
             <p style="font-size: 13px; color: #f3e8ff; font-weight: 800; margin: 8px 0;" id="winDesc">勝負あり！</p>
             <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
                 <button class="btn-full" id="btnNextStoryStage" onclick="nextStoryStage(); closeWinnerModal();">次のステージへ ▶️</button>
-                <button class="btn-full" id="btnRetryBattle" onclick="initGame(); closeWinnerModal();">もう一度対戦する</button>
+                <button class="btn-full" id="btnRetryBattle" onclick="retryCurrentGame(); closeWinnerModal();">もう一度プレイする</button>
                 <button class="btn-full" style="background: #2e1065; box-shadow: 0 6px 0 #15022e;" onclick="closeWinnerModal(); showTitleScreen();">タイトルへ戻る</button>
             </div>
         </div>
@@ -1007,76 +1026,27 @@
 
     <script>
         const CHARACTERS = {
-            normal: { name: "ノーマル", baseDamage: 4, comboMult: 1.0, defMult: 1.0, desc: "標準的なバランスタイプ" },
-            attacker: { name: "バーサーカー", baseDamage: 7, comboMult: 0.7, defMult: 1.4, desc: "攻撃力特化だが被ダメ増加" },
-            combo: { name: "コンボマスター", baseDamage: 3, comboMult: 2.0, defMult: 1.0, desc: "コンボ連鎖の火力が特大" },
-            defender: { name: "ガーディアン", baseDamage: 3, comboMult: 1.0, defMult: 0.6, desc: "防御が固くダメージ軽減" }
+            normal: { baseDamage: 4, defMult: 1.0, comboMult: 1.0, name: 'ノーマル', desc: 'バランスの取れた標準タイプ' },
+            attacker: { baseDamage: 6, defMult: 1.25, comboMult: 0.8, name: 'バーサーカー', desc: '高攻撃力 / 被ダメ増 / コンボ倍率低' },
+            combo: { baseDamage: 3, defMult: 1.0, comboMult: 1.6, name: 'コンボマスター', desc: 'コンボ時の追加ダメージ特大' },
+            defender: { baseDamage: 3, defMult: 0.7, comboMult: 0.9, name: 'ガーディアン', desc: '受けるダメージが非常に少ない' }
         };
 
         const CHAR_SVGS = {
-            normal: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50" cy="50" r="35" fill="#38bdf8" stroke="#ffffff" stroke-width="4"/>
-                <circle cx="38" cy="45" r="5" fill="#ffffff"/><circle cx="62" cy="45" r="5" fill="#ffffff"/>
-                <path d="M 40 62 Q 50 72 60 62" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round"/>
-            </svg>`,
-            attacker: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50" cy="50" r="35" fill="#f43f5e" stroke="#ffffff" stroke-width="4"/>
-                <circle cx="38" cy="45" r="5" fill="#ffffff"/><circle cx="62" cy="45" r="5" fill="#ffffff"/>
-                <path d="M 38 35 L 48 40" stroke="#000" stroke-width="3"/><path d="M 62 35 L 52 40" stroke="#000" stroke-width="3"/>
-                <path d="M 40 68 Q 50 58 60 68" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round"/>
-            </svg>`,
-            combo: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50" cy="50" r="35" fill="#facc15" stroke="#ffffff" stroke-width="4"/>
-                <circle cx="38" cy="45" r="5" fill="#000"/><circle cx="62" cy="45" r="5" fill="#000"/>
-                <path d="M 40 65 Q 50 75 60 65" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
-            </svg>`,
-            defender: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50" cy="50" r="35" fill="#4ade80" stroke="#ffffff" stroke-width="4"/>
-                <circle cx="38" cy="45" r="5" fill="#ffffff"/><circle cx="62" cy="45" r="5" fill="#ffffff"/>
-                <path d="M 42 62 L 58 62" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-            </svg>`
+            normal: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="32" fill="#38bdf8"/><path d="M25 85 Q50 65 75 85 L75 110 Q50 120 25 110 Z" fill="#0284c7"/><circle cx="40" cy="45" r="4" fill="#0f172a"/><circle cx="60" cy="45" r="4" fill="#0f172a"/></svg>`,
+            attacker: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="32" fill="#ff4d6d"/><path d="M25 85 Q50 65 75 85 L75 110 Q50 120 25 110 Z" fill="#9f1239"/><path d="M30 25 L50 10 L70 25 Z" fill="#facc15"/><circle cx="40" cy="45" r="4" fill="#ffffff"/><circle cx="60" cy="45" r="4" fill="#ffffff"/></svg>`,
+            combo: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="32" fill="#4ade80"/><path d="M25 85 Q50 65 75 85 L75 110 Q50 120 25 110 Z" fill="#166534"/><circle cx="40" cy="45" r="4" fill="#065f46"/><circle cx="60" cy="45" r="4" fill="#065f46"/></svg>`,
+            defender: `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="32" fill="#facc15"/><path d="M25 85 Q50 65 75 85 L75 110 Q50 120 25 110 Z" fill="#854d0e"/><rect x="35" y="30" width="30" height="15" rx="5" fill="#ffffff"/><circle cx="40" cy="45" r="4" fill="#422006"/><circle cx="60" cy="45" r="4" fill="#422006"/></svg>`
         };
 
         const STORY_STAGES = [
-            {
-                stage: 1,
-                title: "STAGE 1: 見習い剣士の試練",
-                enemyChar: "normal",
-                enemyName: "見習い リンクス",
-                speaker: "リンクス",
-                dialog: "「ボクも立派な剣士になるんだ！手加減はしないよ！」",
-                cpuSpeed: 1600
-            },
-            {
-                stage: 2,
-                title: "STAGE 2: 狂戦士の襲来",
-                enemyChar: "attacker",
-                enemyName: "狂戦士 ヴォルグ",
-                speaker: "ヴォルグ",
-                dialog: "「ハハハ！オレ様の圧倒的破壊力に耐えられるかな！？」",
-                cpuSpeed: 1300
-            },
-            {
-                stage: 3,
-                title: "STAGE 3: 鉄壁の守護者",
-                enemyChar: "defender",
-                enemyName: "守護騎士 ヴァルデン",
-                speaker: "ヴァルデン",
-                dialog: "「我が盾を破れるか？焦りは禁物だぞ、若き剣士よ。」",
-                cpuSpeed: 1100
-            },
-            {
-                stage: 4,
-                title: "FINAL STAGE: 連鎖の覇王",
-                enemyChar: "combo",
-                enemyName: "連鎖の覇王 プレア",
-                speaker: "プレア",
-                dialog: "「よくぞここまで辿り着いた！究極の連鎖バトルを見せてやろう！」",
-                cpuSpeed: 850
-            }
+            { title: "STAGE 1: 最初の挑戦者", enemy: 'normal', dialog: "ふっ、ここを通るには私を倒してから行くんだな！" },
+            { title: "STAGE 2: 荒ぶる剣士", enemy: 'attacker', dialog: "オレの圧倒的な火力についてこれるか！！" },
+            { title: "STAGE 3: 連鎖の達人", enemy: 'combo', dialog: "コンボの美しさと恐ろしさを教えてやろう..." },
+            { title: "STAGE 4: 鉄壁の守護者", enemy: 'defender', dialog: "私の防御を破ることは誰にもできん！" }
         ];
 
-        let gameMode = 'free'; // 'story', 'free', 'pvp'
+        let gameMode = 'free'; // 'story', 'free', 'pvp', 'practice'
         let mode = 'cpu'; // 'cpu', 'pvp', 'solo'
         let currentStoryStageIndex = 0;
         let selectedCharKey = 'normal';
@@ -1090,12 +1060,22 @@
         let gameActive = false;
         let cpuIntervalTime = 1200;
         let cpuInterval = null;
-        let activeTurnPlayer = 1; // 1 or 2 (for PVP)
+        let activeTurnPlayer = 1;
 
         let isOnline = false;
-        let onlineRole = null; // 'p1' or 'p2'
+        let onlineRole = null;
         let currentRoomId = null;
         let roomUnsubscribe = null;
+
+        function showAlert(msg, title = "お知らせ") {
+            document.getElementById('alertModalTitle').innerText = title;
+            document.getElementById('alertModalText').innerText = msg;
+            document.getElementById('alertModal').classList.add('active');
+        }
+
+        function closeAlertModal() {
+            document.getElementById('alertModal').classList.remove('active');
+        }
 
         function getRoomDocRef(roomId) {
             return window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'rooms', roomId);
@@ -1117,9 +1097,16 @@
         }
 
         async function createOnlineRoom() {
-            const user = await window.authReadyPromise;
+            let user = await window.authReadyPromise;
             if (!user) {
-                alert("認証情報の初期化に失敗しました。再読み込みしてください。");
+                try {
+                    const res = await window.signInAnonymously(window.auth);
+                    user = res.user;
+                } catch(e) {}
+            }
+
+            if (!user) {
+                showAlert("認証に失敗しました。ページを再読み込みしてお試しください。");
                 return;
             }
 
@@ -1155,8 +1142,7 @@
                 p2Revealed: new Array(boardP2.grid.length).fill(false),
                 p2SwordsLeft: boardP2.swordsCount,
                 p1Combo: 0,
-                p2Combo: 0,
-                lastAction: null
+                p2Combo: 0
             };
 
             try {
@@ -1164,20 +1150,27 @@
                 listenToRoom(roomId);
             } catch (err) {
                 console.error("Room creation error:", err);
-                alert("ルームの作成に失敗しました。");
+                showAlert("ルーム作成に失敗しました。");
             }
         }
 
         async function joinOnlineRoom() {
-            const user = await window.authReadyPromise;
+            let user = await window.authReadyPromise;
             if (!user) {
-                alert("認証情報の初期化に失敗しました。再読み込みしてください。");
+                try {
+                    const res = await window.signInAnonymously(window.auth);
+                    user = res.user;
+                } catch(e) {}
+            }
+
+            if (!user) {
+                showAlert("認証に失敗しました。ページを再読み込みしてお試しください。");
                 return;
             }
 
             const inputCode = document.getElementById('joinRoomInput').value.trim();
             if (inputCode.length !== 6) {
-                alert("6桁の部屋番号を入力してください。");
+                showAlert("6桁の部屋番号を入力してください。");
                 return;
             }
 
@@ -1243,6 +1236,9 @@
                     document.getElementById('titleScreen').classList.add('hidden');
                     document.getElementById('gameScreen').classList.remove('hidden');
                     document.getElementById('gameModeHeaderTitle').innerText = '🌐 オンライン対戦';
+                    document.getElementById('p2Card').style.display = 'flex';
+                    document.getElementById('vsGaugeCard').style.display = 'flex';
+                    document.getElementById('battleArenaContainer').classList.add('dual-mode');
                     initGameUIOnly();
                 }
 
@@ -1251,65 +1247,98 @@
                 renderBoard('gridP2', p2Grid, p2Revealed, 2, getSheetConfig(p2SheetNum).size);
                 updateTurnHighlight();
                 checkWinner();
-            }, (err) => {
-                console.error("Room sync error:", err);
             });
         }
 
-        function initGameUIOnly() {
-            gameActive = true;
-            updateHpUI();
-
-            const p1Char = CHARACTERS[selectedCharKey];
-            const p2Char = CHARACTERS[p2CharKey];
-
-            document.getElementById('p1AvatarFrame').innerHTML = CHAR_SVGS[selectedCharKey];
-            document.getElementById('p1Name').innerText = `P1 (${p1Char.name})`;
-            document.getElementById('p1TypeDesc').innerText = p1Char.desc;
-
-            document.getElementById('p2AvatarFrame').innerHTML = CHAR_SVGS[p2CharKey];
-            document.getElementById('p2Name').innerText = `P2 (${p2Char.name})`;
-            document.getElementById('p2TypeDesc').innerText = p2Char.desc;
-
-            document.getElementById('p1Left').innerText = p1SwordsLeft;
-            document.getElementById('p2Left').innerText = p2SwordsLeft;
-            document.getElementById('p1Sheet').innerText = `STAGE ${p1SheetNum}`;
-            document.getElementById('p2Sheet').innerText = `STAGE ${p2SheetNum}`;
-            document.getElementById('p1Combo').innerText = `${p1Combo} COMBO`;
-            document.getElementById('p2Combo').innerText = `${p2Combo} COMBO`;
-        }
-
         function getSheetConfig(sheetNum) {
-            const size = Math.min(2 + (sheetNum - 1), 6);
-            const swordsCount = Math.max(1, Math.floor(size * size * 0.3));
-            return { size, swordsCount };
+            if (sheetNum === 1) return { size: 2, swordsCount: 2 };
+            if (sheetNum === 2) return { size: 3, swordsCount: 3 };
+            if (sheetNum === 3) return { size: 4, swordsCount: 4 };
+            return { size: 5, swordsCount: 6 };
         }
 
-        function openPvpModal() {
-            isOnline = false;
-            document.getElementById('pvpModal').classList.add('active');
+        function generateBoardForSheet(sheetNum) {
+            const config = getSheetConfig(sheetNum);
+            const totalCells = config.size * config.size;
+            let grid = new Array(totalCells).fill(0);
+            let placedSwords = 0;
+
+            while (placedSwords < config.swordsCount) {
+                const idx = Math.floor(Math.random() * totalCells);
+                if (grid[idx] !== 'S') {
+                    grid[idx] = 'S';
+                    placedSwords++;
+                }
+            }
+
+            for (let i = 0; i < totalCells; i++) {
+                if (grid[i] === 'S') continue;
+                let count = 0;
+                const r = Math.floor(i / config.size);
+                const c = i % config.size;
+
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (nr >= 0 && nr < config.size && nc >= 0 && nc < config.size) {
+                            const ni = nr * config.size + nc;
+                            if (grid[ni] === 'S') count++;
+                        }
+                    }
+                }
+                grid[i] = count;
+            }
+
+            return { grid, swordsCount: config.swordsCount };
         }
 
-        function closePvpModal() {
-            document.getElementById('pvpModal').classList.remove('active');
+        function revealCellCascade(grid, revealed, startIndex, size) {
+            const queue = [startIndex];
+            while (queue.length > 0) {
+                const idx = queue.shift();
+                const r = Math.floor(idx / size);
+                const c = idx % size;
+
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (nr >= 0 && nr < size && nc >= 0 && nc < size) {
+                            const ni = nr * size + nc;
+                            if (!revealed[ni] && grid[ni] !== 'S') {
+                                revealed[ni] = true;
+                                if (grid[ni] === 0) {
+                                    queue.push(ni);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        function launchPvpGame() {
-            isOnline = false;
-            gameMode = 'pvp';
-            mode = 'pvp';
-            selectedCharKey = document.getElementById('pvpP1CharSelect').value;
-            p2CharKey = document.getElementById('pvpP2CharSelect').value;
+        function triggerCharAction(elementId, isP1) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            const animClass = isP1 ? 'attack-p1' : 'attack-p2';
+            el.classList.remove(animClass);
+            void el.offsetWidth;
+            el.classList.add(animClass);
+        }
 
-            closePvpModal();
-            document.getElementById('titleScreen').classList.add('hidden');
-            document.getElementById('gameScreen').classList.remove('hidden');
-            document.getElementById('gameModeHeaderTitle').innerText = '⚔️ 1台でローカル対戦';
-            initGame();
+        function triggerCutin(cutinId, text) {
+            const el = document.getElementById(cutinId);
+            if (!el) return;
+            el.innerText = text;
+            el.classList.add('active');
+            setTimeout(() => {
+                el.classList.remove('active');
+            }, 550);
         }
 
         function startStoryMode() {
-            isOnline = false;
             gameMode = 'story';
             mode = 'cpu';
             currentStoryStageIndex = 0;
@@ -1318,28 +1347,38 @@
         }
 
         function showStoryStageIntro() {
-            const stageData = STORY_STAGES[currentStoryStageIndex];
-            document.getElementById('storyStageTitle').innerText = stageData.title;
-            document.getElementById('storyEnemyAvatar').innerHTML = CHAR_SVGS[stageData.enemyChar];
-            document.getElementById('storySpeakerName').innerText = stageData.speaker;
-            document.getElementById('storyDialogText').innerText = stageData.dialog;
+            const stage = STORY_STAGES[currentStoryStageIndex];
+            p2CharKey = stage.enemy;
+            document.getElementById('storyStageTitle').innerText = stage.title;
+            document.getElementById('storySpeakerName').innerText = CHARACTERS[p2CharKey].name;
+            document.getElementById('storyDialogText').innerText = stage.dialog;
+            document.getElementById('storyEnemyAvatar').innerHTML = CHAR_SVGS[p2CharKey];
             document.getElementById('storyModal').classList.add('active');
         }
 
         function closeStoryModalAndStartBattle() {
             document.getElementById('storyModal').classList.remove('active');
-            const stageData = STORY_STAGES[currentStoryStageIndex];
-            p2CharKey = stageData.enemyChar;
-            cpuIntervalTime = stageData.cpuSpeed;
-            
-            document.getElementById('titleScreen').classList.add('hidden');
-            document.getElementById('gameScreen').classList.remove('hidden');
-            document.getElementById('gameModeHeaderTitle').innerText = `📖 ${stageData.title}`;
-            initGame();
+            launchBattleCommon();
+        }
+
+        function openPvpModal() {
+            document.getElementById('pvpModal').classList.add('active');
+        }
+
+        function closePvpModal() {
+            document.getElementById('pvpModal').classList.remove('active');
+        }
+
+        function launchPvpGame() {
+            closePvpModal();
+            gameMode = 'pvp';
+            mode = 'pvp';
+            selectedCharKey = document.getElementById('pvpP1CharSelect').value;
+            p2CharKey = document.getElementById('pvpP2CharSelect').value;
+            launchBattleCommon();
         }
 
         function openFreeGameModal() {
-            isOnline = false;
             document.getElementById('freeGameModal').classList.add('active');
         }
 
@@ -1348,21 +1387,81 @@
         }
 
         function launchFreeGame() {
-            isOnline = false;
             gameMode = 'free';
             mode = 'cpu';
-            const enemyVal = document.getElementById('freeEnemySelect').value;
-            if (enemyVal === 'random') {
+            const enemySelect = document.getElementById('freeEnemySelect').value;
+            if (enemySelect === 'random') {
                 const keys = Object.keys(CHARACTERS);
                 p2CharKey = keys[Math.floor(Math.random() * keys.length)];
             } else {
-                p2CharKey = enemyVal;
+                p2CharKey = enemySelect;
             }
-
             cpuIntervalTime = parseInt(document.getElementById('freeCpuSpeedSelect').value);
+            launchBattleCommon();
+        }
+
+        // 練習モードの開始関数（完全版）
+        function startPracticeMode() {
+            gameMode = 'practice';
+            mode = 'solo';
+            p1Hp = 50;
+            p1Combo = 0;
+            p1SheetNum = 1;
+            gameActive = true;
+            
             document.getElementById('titleScreen').classList.add('hidden');
             document.getElementById('gameScreen').classList.remove('hidden');
-            document.getElementById('gameModeHeaderTitle').innerText = '🎮 フリーゲーム';
+            document.getElementById('gameModeHeaderTitle').innerText = '🎯 練習モード';
+
+            // 相手側のボード（P2）とVSゲージを非表示化
+            const p2Card = document.getElementById('p2Card');
+            if (p2Card) p2Card.style.display = 'none';
+
+            const vsGaugeCard = document.getElementById('vsGaugeCard');
+            if (vsGaugeCard) vsGaugeCard.style.display = 'none';
+
+            const arenaContainer = document.getElementById('battleArenaContainer');
+            if (arenaContainer) arenaContainer.classList.remove('dual-mode');
+
+            // ボード生成と初期化
+            const boardP1 = generateBoardForSheet(p1SheetNum);
+            p1Grid = boardP1.grid;
+            p1Revealed = new Array(boardP1.grid.length).fill(false);
+            p1SwordsLeft = boardP1.swordsCount;
+
+            document.getElementById('p1Name').innerText = 'PLAYER 1 (練習)';
+            document.getElementById('p1Sheet').innerText = `STAGE ${p1SheetNum}`;
+            document.getElementById('p1Combo').innerText = '0 COMBO';
+            document.getElementById('p1Left').innerText = p1SwordsLeft;
+
+            const avatarEl = document.getElementById('p1AvatarFrame');
+            if (avatarEl && CHAR_SVGS[selectedCharKey]) {
+                avatarEl.innerHTML = CHAR_SVGS[selectedCharKey];
+            }
+
+            renderBoard('gridP1', p1Grid, p1Revealed, 1, getSheetConfig(p1SheetNum).size);
+        }
+
+        function launchBattleCommon() {
+            document.getElementById('titleScreen').classList.add('hidden');
+            document.getElementById('gameScreen').classList.remove('hidden');
+
+            const p2Card = document.getElementById('p2Card');
+            const vsGaugeCard = document.getElementById('vsGaugeCard');
+            const arenaContainer = document.getElementById('battleArenaContainer');
+
+            if (p2Card) p2Card.style.display = 'flex';
+            if (vsGaugeCard) vsGaugeCard.style.display = 'flex';
+            if (arenaContainer) arenaContainer.classList.add('dual-mode');
+
+            if (gameMode === 'story') {
+                document.getElementById('gameModeHeaderTitle').innerText = `📖 ${STORY_STAGES[currentStoryStageIndex].title}`;
+            } else if (gameMode === 'free') {
+                document.getElementById('gameModeHeaderTitle').innerText = '🎮 フリー対戦 (VS CPU)';
+            } else if (gameMode === 'pvp') {
+                document.getElementById('gameModeHeaderTitle').innerText = '⚔️ 2人対戦 (PVP)';
+            }
+
             initGame();
         }
 
@@ -1372,171 +1471,68 @@
             p2Combo = 0;
             p1SheetNum = 1;
             p2SheetNum = 1;
-            activeTurnPlayer = 1;
             gameActive = true;
-            updateHpUI();
-
-            const p1Char = CHARACTERS[selectedCharKey];
-            const p2Char = CHARACTERS[p2CharKey];
-
-            document.getElementById('p1AvatarFrame').innerHTML = CHAR_SVGS[selectedCharKey];
-            document.getElementById('p1Name').innerText = `P1 (${p1Char.name})`;
-            document.getElementById('p1TypeDesc').innerText = p1Char.desc;
-
-            document.getElementById('p2AvatarFrame').innerHTML = CHAR_SVGS[p2CharKey];
-            
-            if (gameMode === 'story') {
-                const stageData = STORY_STAGES[currentStoryStageIndex];
-                document.getElementById('p2Name').innerText = stageData.enemyName;
-            } else if (gameMode === 'pvp') {
-                document.getElementById('p2Name').innerText = `P2 (${p2Char.name})`;
-            } else {
-                document.getElementById('p2Name').innerText = `CPU (${p2Char.name})`;
-            }
-            
-            document.getElementById('p2TypeDesc').innerText = p2Char.desc;
-
-            document.getElementById('p1Combo').innerText = '0 COMBO';
-            document.getElementById('p2Combo').innerText = '0 COMBO';
-
-            resetP1Sheet();
-            resetP2Sheet();
-            updateTurnHighlight();
+            activeTurnPlayer = 1;
 
             if (cpuInterval) clearInterval(cpuInterval);
+
+            const b1 = generateBoardForSheet(1);
+            p1Grid = b1.grid;
+            p1Revealed = new Array(b1.grid.length).fill(false);
+            p1SwordsLeft = b1.swordsCount;
+
+            const b2 = generateBoardForSheet(1);
+            p2Grid = b2.grid;
+            p2Revealed = new Array(b2.grid.length).fill(false);
+            p2SwordsLeft = b2.swordsCount;
+
+            document.getElementById('p1Name').innerText = 'PLAYER 1';
+            document.getElementById('p1TypeDesc').innerText = CHARACTERS[selectedCharKey].desc;
+            document.getElementById('p1Sheet').innerText = 'STAGE 1';
+            document.getElementById('p1Combo').innerText = '0 COMBO';
+            document.getElementById('p1Left').innerText = p1SwordsLeft;
+
+            document.getElementById('p2Name').innerText = mode === 'cpu' ? 'AI CPU' : 'PLAYER 2';
+            document.getElementById('p2TypeDesc').innerText = CHARACTERS[p2CharKey].desc;
+            document.getElementById('p2Sheet').innerText = 'STAGE 1';
+            document.getElementById('p2Combo').innerText = '0 COMBO';
+            document.getElementById('p2Left').innerText = p2SwordsLeft;
+
+            document.getElementById('p1AvatarFrame').innerHTML = CHAR_SVGS[selectedCharKey];
+            document.getElementById('p2AvatarFrame').innerHTML = CHAR_SVGS[p2CharKey];
+
+            updateHpUI();
+            renderBoard('gridP1', p1Grid, p1Revealed, 1, getSheetConfig(1).size);
+            renderBoard('gridP2', p2Grid, p2Revealed, 2, getSheetConfig(1).size);
+            updateTurnHighlight();
+
             if (mode === 'cpu') {
                 cpuInterval = setInterval(cpuTurn, cpuIntervalTime);
             }
         }
 
-        function generateBoardForSheet(sheetNum) {
-            const config = getSheetConfig(sheetNum);
-            const gridSize = config.size;
-            const swords = config.swordsCount;
-            const totalCells = gridSize * gridSize;
-
-            const grid = new Array(totalCells).fill(0);
-            let placed = 0;
-
-            while (placed < swords) {
-                const idx = Math.floor(Math.random() * totalCells);
-                if (grid[idx] !== 'S') {
-                    grid[idx] = 'S';
-                    placed++;
-                }
-            }
-
-            for (let i = 0; i < totalCells; i++) {
-                if (grid[i] === 'S') continue;
-                let count = 0;
-                const row = Math.floor(i / gridSize);
-                const col = i % gridSize;
-
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        if (dr === 0 && dc === 0) continue;
-                        const nr = row + dr;
-                        const nc = col + dc;
-                        if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
-                            if (grid[nr * gridSize + nc] === 'S') count++;
-                        }
-                    }
-                }
-                grid[i] = count;
-            }
-            return { grid, size: gridSize, swordsCount: swords };
+        function initGameUIOnly() {
+            updateHpUI();
+            document.getElementById('p1AvatarFrame').innerHTML = CHAR_SVGS[selectedCharKey];
+            document.getElementById('p2AvatarFrame').innerHTML = CHAR_SVGS[p2CharKey];
+            document.getElementById('p1TypeDesc').innerText = CHARACTERS[selectedCharKey].desc;
+            document.getElementById('p2TypeDesc').innerText = CHARACTERS[p2CharKey].desc;
+            gameActive = true;
         }
 
-        function resetP1Sheet() {
-            const boardData = generateBoardForSheet(p1SheetNum);
-            p1Grid = boardData.grid;
-            p1Revealed = new Array(boardData.size * boardData.size).fill(false);
-            p1SwordsLeft = boardData.swordsCount;
-            document.getElementById('p1Left').innerText = p1SwordsLeft;
-            document.getElementById('p1Sheet').innerText = `STAGE ${p1SheetNum}`;
-            renderBoard('gridP1', p1Grid, p1Revealed, 1, boardData.size);
-        }
-
-        function resetP2Sheet() {
-            const boardData = generateBoardForSheet(p2SheetNum);
-            p2Grid = boardData.grid;
-            p2Revealed = new Array(boardData.size * boardData.size).fill(false);
-            p2SwordsLeft = boardData.swordsCount;
-            document.getElementById('p2Left').innerText = p2SwordsLeft;
-            document.getElementById('p2Sheet').innerText = `STAGE ${p2SheetNum}`;
-            renderBoard('gridP2', p2Grid, p2Revealed, 2, boardData.size);
-        }
-
-        function updateTurnHighlight() {
-            const p1Card = document.getElementById('p1Card');
-            const p2Card = document.getElementById('p2Card');
-            const turnIndicator = document.getElementById('turnIndicator');
-
-            if (mode === 'pvp') {
-                if (activeTurnPlayer === 1) {
-                    p1Card.classList.add('active-turn');
-                    p2Card.classList.remove('active-turn');
-                    turnIndicator.innerText = (isOnline && onlineRole === 'p1') ? "⚔️ あなたのターン ⚔️" : "⚔️ P1 TURN ⚔️";
-                    turnIndicator.style.color = "#38bdf8";
-                } else {
-                    p2Card.classList.add('active-turn');
-                    p1Card.classList.remove('active-turn');
-                    turnIndicator.innerText = (isOnline && onlineRole === 'p2') ? "⚔️ あなたのターン ⚔️" : "⚔️ P2 TURN ⚔️";
-                    turnIndicator.style.color = "#ff4d6d";
-                }
+        function retryCurrentGame() {
+            if (gameMode === 'story') {
+                showStoryStageIntro();
+            } else if (gameMode === 'practice') {
+                startPracticeMode();
             } else {
-                p1Card.classList.remove('active-turn');
-                p2Card.classList.remove('active-turn');
-                turnIndicator.innerText = "⚔️ VS DRAIN ⚔️";
-                turnIndicator.style.color = "#facc15";
-            }
-        }
-
-        function triggerCutin(elementId, text) {
-            const el = document.getElementById(elementId);
-            if (!el) return;
-            el.innerText = text;
-            el.classList.add('active');
-            setTimeout(() => { el.classList.remove('active'); }, 700);
-        }
-
-        function triggerCharAction(avatarId, isP1) {
-            const frame = document.getElementById(avatarId);
-            if (!frame) return;
-            const animClass = isP1 ? 'attack-p1' : 'attack-p2';
-            frame.classList.remove('attack-p1', 'attack-p2');
-            void frame.offsetWidth;
-            frame.classList.add(animClass);
-            setTimeout(() => { frame.classList.remove(animClass); }, 600);
-        }
-
-        function revealCellCascade(grid, revealed, index, gridSize) {
-            const queue = [index];
-            while (queue.length > 0) {
-                const curr = queue.shift();
-                const r = Math.floor(curr / gridSize);
-                const c = curr % gridSize;
-
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        const nr = r + dr;
-                        const nc = c + dc;
-                        if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
-                            const nIdx = nr * gridSize + nc;
-                            if (!revealed[nIdx] && grid[nIdx] !== 'S') {
-                                revealed[nIdx] = true;
-                                if (grid[nIdx] === 0) queue.push(nIdx);
-                            }
-                        }
-                    }
-                }
+                launchBattleCommon();
             }
         }
 
         async function handleCellTap(playerNum, idx) {
             if (!gameActive) return;
 
-            // Online Turn Guard
             if (isOnline) {
                 if ((onlineRole === 'p1' && playerNum !== 1) || (onlineRole === 'p2' && playerNum !== 2)) return;
                 if ((onlineRole === 'p1' && activeTurnPlayer !== 1) || (onlineRole === 'p2' && activeTurnPlayer !== 2)) return;
@@ -1557,13 +1553,22 @@
                     
                     const sheetMultiplier = 1 + (p1SheetNum - 1) * 0.25;
                     const rawDmg = (attacker.baseDamage * sheetMultiplier + (p1Combo * 2 * attacker.comboMult));
-                    const finalDmg = Math.round(rawDmg * defender.defMult);
+                    const finalDmg = mode === 'solo' ? Math.round(rawDmg) : Math.round(rawDmg * defender.defMult);
 
-                    p1Hp = Math.min(100, p1Hp + finalDmg);
+                    if (mode === 'solo') {
+                        p1Hp = Math.min(100, p1Hp + Math.round(finalDmg / 2));
+                    } else {
+                        p1Hp = Math.min(100, p1Hp + finalDmg);
+                    }
+                    
+                    document.getElementById('p1Combo').innerText = `${p1Combo} COMBO!`;
+                    document.getElementById('p1Left').innerText = p1SwordsLeft;
+
                     triggerCharAction('p1AvatarFrame', true);
-                    triggerCutin('p1Cutin', `⚔️ P1 ${p1Combo}連鎖! +${finalDmg}HP`);
+                    triggerCutin('p1Cutin', `⚔️ P1 ${p1Combo}連鎖!`);
                 } else {
                     p1Combo = 0;
+                    document.getElementById('p1Combo').innerText = '0 COMBO';
                     if (p1Grid[idx] === 0) {
                         revealCellCascade(p1Grid, p1Revealed, idx, currentSize);
                     }
@@ -1576,9 +1581,11 @@
                     p1Grid = newBoard.grid;
                     p1Revealed = new Array(newBoard.grid.length).fill(false);
                     p1SwordsLeft = newBoard.swordsCount;
+                    document.getElementById('p1Sheet').innerText = `STAGE ${p1SheetNum}`;
+                    document.getElementById('p1Left').innerText = p1SwordsLeft;
                 }
 
-            } else if (playerNum === 2) {
+            } else if (playerNum === 2 && mode !== 'solo') {
                 if (p2Revealed[idx]) return;
                 const attacker = CHARACTERS[p2CharKey];
                 const defender = CHARACTERS[selectedCharKey];
@@ -1594,10 +1601,14 @@
                     const finalDmg = Math.round(rawDmg * defender.defMult);
 
                     p1Hp = Math.max(0, p1Hp - finalDmg);
+                    document.getElementById('p2Combo').innerText = `${p2Combo} COMBO!`;
+                    document.getElementById('p2Left').innerText = p2SwordsLeft;
+
                     triggerCharAction('p2AvatarFrame', false);
                     triggerCutin('p2Cutin', `💥 P2 ${p2Combo}連鎖! -${finalDmg}HP`);
                 } else {
                     p2Combo = 0;
+                    document.getElementById('p2Combo').innerText = '0 COMBO';
                     if (p2Grid[idx] === 0) {
                         revealCellCascade(p2Grid, p2Revealed, idx, currentSize);
                     }
@@ -1610,10 +1621,12 @@
                     p2Grid = newBoard.grid;
                     p2Revealed = new Array(newBoard.grid.length).fill(false);
                     p2SwordsLeft = newBoard.swordsCount;
+                    document.getElementById('p2Sheet').innerText = `STAGE ${p2SheetNum}`;
+                    document.getElementById('p2Left').innerText = p2SwordsLeft;
                 }
             }
 
-            if (isOnline) {
+            if (isOnline && currentRoomId) {
                 try {
                     await window.updateDoc(getRoomDocRef(currentRoomId), {
                         p1Hp,
@@ -1629,13 +1642,13 @@
                         p1Combo,
                         p2Combo
                     });
-                } catch (err) {
-                    console.error("Online update error:", err);
-                }
+                } catch (err) {}
             } else {
                 updateHpUI();
                 renderBoard('gridP1', p1Grid, p1Revealed, 1, getSheetConfig(p1SheetNum).size);
-                renderBoard('gridP2', p2Grid, p2Revealed, 2, getSheetConfig(p2SheetNum).size);
+                if (mode !== 'solo') {
+                    renderBoard('gridP2', p2Grid, p2Revealed, 2, getSheetConfig(p2SheetNum).size);
+                }
                 updateTurnHighlight();
                 checkWinner();
             }
@@ -1687,7 +1700,13 @@
             if (p2SwordsLeft <= 0 && gameActive) {
                 setTimeout(() => {
                     p2SheetNum++;
-                    resetP2Sheet();
+                    const newBoard = generateBoardForSheet(p2SheetNum);
+                    p2Grid = newBoard.grid;
+                    p2Revealed = new Array(newBoard.grid.length).fill(false);
+                    p2SwordsLeft = newBoard.swordsCount;
+                    document.getElementById('p2Sheet').innerText = `STAGE ${p2SheetNum}`;
+                    document.getElementById('p2Left').innerText = p2SwordsLeft;
+                    renderBoard('gridP2', p2Grid, p2Revealed, 2, getSheetConfig(p2SheetNum).size);
                 }, 400);
             }
         }
@@ -1713,7 +1732,7 @@
                     }
                 }
 
-                if (playerNum === 1 || (playerNum === 2 && mode === 'pvp')) {
+                if (playerNum === 1 || playerNum === 2) {
                     cell.onclick = () => handleCellTap(playerNum, i);
                 }
 
@@ -1727,14 +1746,42 @@
         }
 
         function updateHpUI() {
+            if (mode === 'solo') {
+                document.getElementById('hpP1Text').innerText = `STAGE ${p1SheetNum}`;
+                document.getElementById('hpP1Bar').style.width = '100%';
+                return;
+            }
             document.getElementById('hpP1Text').innerText = `${p1Hp}%`;
             document.getElementById('hpP2Text').innerText = `${100 - p1Hp}%`;
             document.getElementById('hpP1Bar').style.width = `${p1Hp}%`;
             document.getElementById('hpP2Bar').style.width = `${100 - p1Hp}%`;
         }
 
+        function updateTurnHighlight() {
+            const p1Card = document.getElementById('p1Card');
+            const p2Card = document.getElementById('p2Card');
+            if (!p1Card || !p2Card) return;
+
+            if (mode === 'pvp') {
+                if (activeTurnPlayer === 1) {
+                    p1Card.classList.add('active-turn');
+                    p2Card.classList.remove('active-turn');
+                } else {
+                    p2Card.classList.add('active-turn');
+                    p1Card.classList.remove('active-turn');
+                }
+            } else {
+                p1Card.classList.remove('active-turn');
+                p2Card.classList.remove('active-turn');
+            }
+        }
+
         function checkWinner() {
             if (!gameActive) return;
+            if (mode === 'solo') {
+                return;
+            }
+
             if (p1Hp >= 100) {
                 if (gameMode === 'story') {
                     if (currentStoryStageIndex < STORY_STAGES.length - 1) {
@@ -1826,20 +1873,6 @@
             }
             document.getElementById('titleScreen').classList.remove('hidden');
             document.getElementById('gameScreen').classList.add('hidden');
-        }
-
-        function changeMode() {
-            mode = document.getElementById('modeSelect').value;
-            const p2Card = document.getElementById('p2Card');
-            if (mode === 'solo') {
-                p2Card.style.display = 'none';
-            } else {
-                p2Card.style.display = 'flex';
-            }
-        }
-
-        function closeWinnerModal() { 
-            document.getElementById('winnerModal').classList.remove('active'); 
         }
 
         window.onload = function() {
